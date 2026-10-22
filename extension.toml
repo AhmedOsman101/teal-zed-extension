@@ -8,3 +8,7 @@ authors = ["Ahmad Othman <ahmad.ali.othman@outlook.com>"]
 [grammars.teal]
 repository = "https://github.com/euclidianAce/tree-sitter-teal"
 rev = "ac6b42ffb23d5d52b582c02508dd3524ac0ba3df"
+
+[language_servers.teal-language-server]
+name = "Teal Language Server"
+languages = ["Teal"]
