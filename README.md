@@ -21,7 +21,7 @@ This version is installed as a dev extension:
 2. Choose **Install Dev Extension**.
 3. Select this repository.
 
-Registry publication is not part of this version.
+Registry publication is not part of this version. Before submitting to the registry, add a top-level `repository` URL to `extension.toml`.
 
 ## Language server
 
@@ -29,7 +29,9 @@ The extension resolves the server in this order:
 
 1. `lsp.teal-language-server.binary.path` from Zed settings.
 2. `teal-language-server` on `PATH`.
-3. `~/.luarocks/bin/teal-language-server`.
+3. The LuaRocks user tree:
+   - Linux and macOS: `~/.luarocks/bin/teal-language-server`.
+   - Windows: `%APPDATA%\luarocks\bin\teal-language-server.bat`, then `~/.luarocks/bin/teal-language-server.bat`.
 
 If none exists, Zed shows an error naming the binary, the install command, and the upstream repository.
 
@@ -43,14 +45,17 @@ Settings example:
     "teal-language-server": {
       "binary": {
         "path": "/usr/local/bin/teal-language-server",
-        "arguments": ["-d", "INFO"]
+        "arguments": ["-d", "INFO"],
+        "env": {
+          "LUA_PATH": "/custom/?.lua;;"
+        }
       }
     }
   }
 }
 ```
 
-`tlconfig.lua` is optional. Without it, the server still diagnoses open files; with it, `source_dir`, `build_dir`, and `include_dir` are honored.
+`binary.env` is passed through to the server unchanged. `tlconfig.lua` is optional. Without it, the server still diagnoses open files; with it, `source_dir`, `build_dir`, and `include_dir` are honored.
 
 ## Formatter
 
@@ -82,14 +87,14 @@ Zed does not ship a Teal formatter in this extension. Use `ceru` as an external 
 - `languages/teal/textobjects.scm`
 - `examples/sample.tl` as a manual fixture.
 
-The language config deliberately does not set `tab_size`; Zed uses your global editor setting. Folding is derived from indentation because Zed has no `folds.scm`.
+The language config deliberately does not set `tab_size`; Zed uses your global editor setting. Folding is derived from indentation because Zed has no `folds.scm`. Text objects select the inside of function, record, interface, and enum bodies without the closing `end`.
 
 ## Troubleshooting
 
 - **`teal-language-server was not found`**: install it with `luarocks install teal-language-server`, put it on `PATH`, or set `lsp.teal-language-server.binary.path`.
 - **No diagnostics**: open a `.tl` file inside a project and check `zed --foreground` for server logs. `tlconfig.lua` is optional.
-- **Grammar ABI error**: the pinned grammar is ABI 15, which Zed 1.23.2 supports. If your Zed rejects it, report the version rather than silently downgrading; the fallback pin is `05d276e` (v0.1.0, ABI 14).
-- **`wasm-component-ld` rejects `-fuse-ld=mold`**: the shell has `RUSTFLAGS` set for native builds. Build with `RUSTFLAGS= cargo build --release --target wasm32-wasip2`, or unset `RUSTFLAGS` for Zed before installing the dev extension.
+- **Grammar ABI error**: the pinned grammar is ABI 15. No verified ABI-14 tag exists in the upstream repository (`v0.1.0` is ABI 15 and `v0.0.4` is ABI 12). If your Zed rejects ABI 15, report the Zed version rather than silently downgrading.
+- **`wasm-component-ld` rejects `-fuse-ld=mold`**: if your shell exports `RUSTFLAGS` containing `-fuse-ld=mold`, build with `RUSTFLAGS= cargo build --release --target wasm32-wasip2`, or unset `RUSTFLAGS` for Zed before installing the dev extension.
 - **Completion after a bare `.` is empty**: server 0.2.1 returns `(none)` at a dot; keep typing (`p.x`) and field completion appears.
 
 ## License

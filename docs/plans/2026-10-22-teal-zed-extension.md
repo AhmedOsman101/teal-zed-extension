@@ -4,7 +4,7 @@
 
 **Goal:** Ship a Zed extension that adds Teal (`.tl`) support: syntax highlighting, brackets, indentation, outline, text objects, and a `teal-language-server` LSP connection.
 
-**Architecture:** A Zed language extension with a pinned tree-sitter grammar and five query files. A Rust cdylib, compiled to `wasm32-wasip2`, resolves and launches `teal-language-server` from Zed's LSP settings, `$PATH`, or `~/.luarocks/bin`. A checked-in fixture exercises every query and the LSP.
+**Architecture:** A Zed language extension with a pinned tree-sitter grammar and five query files. A Rust cdylib, compiled to `wasm32-wasip2`, resolves and launches `teal-language-server` from Zed's LSP settings, `$PATH`, or the LuaRocks user tree. A checked-in fixture exercises every query and the LSP.
 
 **Tech Stack:** Zed 1.23.2, `zed_extension_api` 0.7.0, Rust edition 2021 (`cdylib`, `wasm32-wasip2`), `euclidianAce/tree-sitter-teal`, `teal-language-server` 0.2.1, `ceru` 1.9.1 (documented as an external formatter only).
 
@@ -20,7 +20,7 @@ These are settled. Do not reopen them while implementing.
 4. **Queries:** `highlights.scm`, `brackets.scm`, `indents.scm`, `outline.scm`, `textobjects.scm`. No `folds.scm` (unsupported); folding comes from indents. No `injections.scm`, `runnables.scm`, or `overrides.scm` in v1.
 5. **Delivery:** local dev extension now; structure and metadata must be registry-ready, but no `zed-industries/extensions` PR in this plan.
 6. **Extension ID:** `teal`. Language name: `Teal`. Grammar name: `teal`.
-7. **Server lookup:** Zed `LspSettings` binary path and arguments → `worktree.which("teal-language-server")` → `~/.luarocks/bin/teal-language-server` → error.
+7. **Server lookup:** Zed `LspSettings` binary path, arguments, and env → `worktree.which("teal-language-server")` → LuaRocks user tree (`~/.luarocks/bin` on Unix, `%APPDATA%\luarocks\bin` with a `.bat` wrapper on Windows) → error.
 8. **Server arguments:** `-d INFO` by default, so users can inspect server logs. **Never pass `-L`**; log-mode flags crash this server on shutdown (`attempt to use a closed file`, `log_file.lua:65`, exit 1).
 9. **License and author:** Apache-2.0; `Ahmad Othman <ahmad.ali.othman@outlook.com>`. `LICENSE` already exists from `license Apache-2.0`.
 10. **Verification fixture:** `examples/sample.tl`, covering records, enums, generics, functions, loops, comments, and one deliberate type error plus one unused-variable warning.
@@ -34,7 +34,7 @@ These are settled. Do not reopen them while implementing.
 - LSP id is `teal-language-server`; default args are exactly `["-d", "INFO"]`; never add `-L`.
 - Rust crate is a `cdylib` targeting `wasm32-wasip2`, using `zed_extension_api = "0.7.0"`.
 - All user-facing text is English.
-- No files outside the extension worktree are read or modified by extension code. The `~/.luarocks/bin` probe goes through `worktree.which`, not `std::fs`.
+- No files outside the extension worktree are read or modified by extension code. The LuaRocks user-tree probe goes through `worktree.which`, not `std::fs`.
 - Commit messages follow Conventional Commits.
 
 ## File Structure
@@ -66,8 +66,8 @@ Responsibilities:
 
 These are the failure modes most likely to bite a user, in order. Each is pinned by a verification step in its owning task.
 
-1. **ABI 15 rejection:** If Zed 1.23.2's tree-sitter runtime rejects the pinned grammar, the dev install fails before any feature works. Fallback: pin `05d276e` (v0.1.0, ABI 14). Task 1.
-2. **`~/.luarocks/bin` is outside the WASI sandbox:** `std::fs` cannot see it. The fallback must construct the path from `worktree.shell_env()` and resolve it through `worktree.which`. Task 3.
+1. **ABI 15 rejection:** If Zed 1.23.2's tree-sitter runtime rejects the pinned grammar, the dev install fails before any feature works. The upstream repository has no verified ABI-14 tag (`v0.1.0` is ABI 15 and `v0.0.4` is ABI 12), so do not claim a fallback pin; report the Zed version if this happens. Task 1.
+2. **LuaRocks bin tree is outside the WASI sandbox:** `std::fs` cannot see it. The fallback must construct the path from `worktree.shell_env()` and resolve it through `worktree.which`. Task 3.
 3. **Log-mode shutdown crash:** Any `-L` argument crashes `teal-language-server` 0.2.1 on shutdown. Task 3 code review and runtime log check.
 4. **`elseif`/`else` indentation:** tree-sitter's `@indent` alone indents `elseif`/`else` one level too deep; the decrease regex must outdent them. Task 2.
 5. **Project root without `tlconfig.lua`:** the server still starts and diagnoses open files, but the verification must prove it rather than assume a config is required. Task 3.
@@ -340,6 +340,10 @@ Exact items:
 (macroexp_declaration
   "macroexp" @context
   name: (identifier) @name) @item
+
+(macroexp_statement
+  "macroexp" @context
+  name: (identifier) @name) @item
 ```
 
 Do not capture every `identifier`; that floods the outline and is the defect in the unregistered community extension.
@@ -350,34 +354,41 @@ Exact patterns:
 
 ```scheme
 (function_statement
-  body: (function_body) @function.inside) @function.around
+  body: (function_body
+    (_)* @function.inside)) @function.around
 
 (anon_function
-  body: (function_body) @function.inside) @function.around
+  body: (function_body
+    (_)* @function.inside)) @function.around
 
 (record_declaration
-  record_body: (record_body) @class.inside) @class.around
+  record_body: (record_body
+    (_)* @class.inside)) @class.around
 
 (anon_record
-  record_body: (record_body) @class.inside) @class.around
+  record_body: (record_body
+    (_)* @class.inside)) @class.around
 
 (interface_declaration
-  interface_body: (interface_body) @class.inside) @class.around
+  interface_body: (interface_body
+    (_)* @class.inside)) @class.around
 
 (anon_interface
-  interface_body: (interface_body) @class.inside) @class.around
+  interface_body: (interface_body
+    (_)* @class.inside)) @class.around
 
 (enum_declaration
-  enum_body: (enum_body) @class.inside) @class.around
+  enum_body: (enum_body
+    (_)* @class.inside)) @class.around
 
 (comment)+ @comment.around
 ```
 
-Text objects are Vim-mode only in Zed. Do not add a `@comment.inside`; Zed's documented comment capture is `@comment.around`.
+Text objects are Vim-mode only in Zed. Capturing `(_)*` rather than the body node keeps the closing `end` out of the inside selection; Zed unions captures of the same object. Do not add a `@comment.inside`; Zed's documented comment capture is `@comment.around`.
 
 - [ ] **Step 5: Extend `examples/sample.tl`**
 
-Add a multiline table and a `do` block so indentation and class/function text objects have more than one shape to test:
+Add a multiline table, a `do` block, and a top-level `macroexp` declaration so indentation, text objects, and the outline have more than one shape to test:
 
 ```teal
 do
@@ -389,7 +400,7 @@ do
 end
 ```
 
-Keep the deliberate type error and unused variable at the end.
+Keep the macroexp used (for example `print(double(2))`) so it does not add an unused-function warning, and keep the deliberate type error and unused variable at the end.
 
 - [ ] **Step 6: Verify indentation, outline, and text objects**
 
@@ -397,7 +408,7 @@ Reinstall the dev extension if Zed does not hot-reload it. Open `examples/sample
 
 - Place the cursor after `if distance(p, q) > 3 then`, press Enter: the new line indents. Type `elseif`: it outdents to the `if` column. Type `else`: same. Type `end`: same.
 - Repeat inside `for`, `while`, `repeat`, `function`, `record`, `do`, and the multiline `{` table.
-- Open the symbol outline (Go to Symbol): it lists `Point`, `Color`, `Pair`, `distance`, and `settings` is not listed (a local table is not a declaration). No duplicate entries for `x`/`y`.
+- Open the symbol outline (Go to Symbol): it lists `Point`, `Color`, `Pair`, `double`, `distance`, and `settings` is not listed (a local table is not a declaration). No duplicate entries for `x`/`y`.
 - In Vim mode, `vaf` inside `distance` selects the function body; `vac` inside `Point` selects the record body; `vF`/comment text object selects the comment run (if the keymap is configured).
 - The Zed log shows no query parse errors for `indents.scm`, `outline.scm`, or `textobjects.scm`.
 
@@ -470,10 +481,10 @@ Implementation decisions:
 
 - `language_server_id.as_ref()` is the string `"teal-language-server"`.
 - Read `LspSettings::for_worktree(...).ok()`; treat missing or invalid settings as empty, not as an error.
-- Resolution order: `settings.binary.path` → `worktree.which("teal-language-server")` → `~/.luarocks/bin/teal-language-server`.
-- For the home fallback, read `HOME`, then `USERPROFILE`, from `worktree.shell_env()`. Do not use `std::env::var` (WASI exposes only `PWD` and `RUST_BACKTRACE`) and do not use `std::fs` (the sandbox does not preopen the home directory). Build the candidate with `/` separators and append `.exe` when `zed::current_platform().0 == zed::Os::Windows`. Resolve it with `worktree.which(&candidate)`.
+- Resolution order: `settings.binary.path` → `worktree.which("teal-language-server")` → the LuaRocks user tree.
+- For the LuaRocks fallback, read `shell_env` from `worktree.shell_env()`. On Unix, use `HOME` then `USERPROFILE` and build `{home}/.luarocks/bin/teal-language-server`. On Windows, use `%APPDATA%\luarocks\bin\teal-language-server.bat` first, then `HOME`/`USERPROFILE` with `/.luarocks/bin/teal-language-server.bat` for MSYS-style installs. Do not use `std::env::var` (WASI exposes only `PWD` and `RUST_BACKTRACE`) and do not use `std::fs` (the sandbox does not preopen the home directory). Resolve each candidate with `worktree.which(&candidate)`.
 - Arguments: if `settings.binary.arguments` is `Some`, use it verbatim. Otherwise use `["-d", "INFO"]`. Never add `-L`, `--log-mode`, or `--verbose`.
-- Return `zed::Command { command, args, env: vec![] }`.
+- Environment: pass `settings.binary.env` through to `zed::Command.env`; default to an empty vector when unset.
 - If no path resolves, return this error string (use a raw string literal; it contains backticks):
   `teal-language-server was not found. Install it with `luarocks install teal-language-server`, or set `lsp.teal-language-server.binary.path` in Zed settings. See https://github.com/teal-language/teal-language-server.`
 - Do not implement `language_server_initialization_options` or `language_server_workspace_configuration`; this server ignores both. Do not implement completion/symbol labels in v1.
@@ -516,7 +527,7 @@ zed --foreground /tmp/teal-demo
 Expected:
 - Diagnostics: one error, `in local declaration: label: got number, expected string`; one warning, `unused variable unused: integer`.
 - Hover over `distance` shows its function signature (markdown with types).
-- Completion after `p.` offers `x` and `y`.
+- Completion after typing `p.x` offers the record fields `x` and `y`. A bare `p.` returns only `(none)` in server 0.2.1; do not treat that upstream limitation as a failure.
 - The server log appears on stderr with `INFO ...` lines; no `attempt to use a closed file` and no exit code 1.
 - The server starts even though `tlconfig.lua` is present; then repeat the same check without `tlconfig.lua` in a second directory (`/tmp/teal-demo-noconfig`). Diagnostics must still appear. This pins Review Focus item 5.
 
@@ -524,9 +535,9 @@ Expected:
 
 The missing-binary branch is the "all three lookups returned `None`" case. A bogus configured `binary.path` is **not** a valid test: it takes the first branch and produces a spawn error from Zed instead. Verify by code review that every `None` path reaches the Step 2 error string.
 
-If a clean environment is available (container or VM with no `teal-language-server` on the shell `PATH` and no `~/.luarocks/bin` entry), open a `.tl` file there and confirm the message appears. Do not claim a runtime pass on a host where the server is always installed.
+If a clean environment is available (container or VM with no `teal-language-server` on the shell `PATH` and no LuaRocks user-tree entry), open a `.tl` file there and confirm the message appears. Do not claim a runtime pass on a host where the server is always installed.
 
-Optional runtime check for the `~/.luarocks/bin` fallback: create `~/.luarocks/bin/teal-language-server` as a symlink to the real wrapper, launch Zed with a shell `PATH` that contains `lua5.5` but not `/usr/bin/teal-language-server`, and confirm the server starts. If this is too invasive for the machine, state that the fallback was code-reviewed but not runtime-tested; do not claim it passed.
+Optional runtime check for the Unix LuaRocks fallback: create `~/.luarocks/bin/teal-language-server` as a symlink to the real wrapper, launch Zed with a shell `PATH` that contains `lua5.5` but not `/usr/bin/teal-language-server`, and confirm the server starts. If this is too invasive for the machine, state that the fallback was code-reviewed but not runtime-tested; do not claim it passed. The Windows `%APPDATA%\luarocks\bin\teal-language-server.bat` candidate is covered by path-construction unit tests only unless a Windows host is available.
 
 - [ ] **Step 7: Commit**
 
@@ -575,7 +586,7 @@ Sections, in this order:
 
    Use 2 spaces to match the author's Helix setup; mention that upstream Teal uses 3 and that the value is a user preference. `ceru` reads stdin and writes stdout, which is what Zed expects.
 6. **What's included** — the five query files, the pinned grammar, and `examples/sample.tl` as the manual fixture.
-7. **Troubleshooting** — server not found; no diagnostics (check `tlconfig.lua` and the server log); grammar ABI mismatch fallback.
+7. **Troubleshooting** — server not found; no diagnostics (check `tlconfig.lua` and the server log); grammar ABI mismatch (no verified fallback pin; report the Zed version).
 8. **License** — Apache-2.0, link `LICENSE`.
 
 Keep it concise; no marketing copy.
@@ -601,7 +612,7 @@ Remove the dev extension and install it again from `/home/othman/work/Rust/teal-
 - Language is Teal; highlighting covers every construct in the fixture.
 - Brackets and comment toggling work.
 - Newlines indent and `elseif`/`else`/`end` outdent.
-- Outline lists `Point`, `Color`, `Pair`, and `distance`.
+- Outline lists `Point`, `Color`, `Pair`, `double`, and `distance`.
 - Diagnostics show the deliberate type error and the unused-variable warning.
 - Hover and completion work.
 - `zed --foreground` logs contain no query errors and no server shutdown crash.
@@ -624,10 +635,10 @@ git commit -m "docs: document teal extension usage"
 | Highlights | Inspect fixture | Keywords, types, strings, properties, labels colored |
 | Brackets/comments | Type brackets; `Ctrl-/` | Auto-close; `-- ` toggle |
 | Indentation | Enter after `then`/`do`/`{`; type `elseif`/`end` | Indent/outdent correctly |
-| Outline | Go to Symbol | `Point`, `Color`, `Pair`, `distance` |
+| Outline | Go to Symbol | `Point`, `Color`, `Pair`, `double`, `distance` |
 | Text objects | Vim `vaf`/`vac` | Function/record body selected |
 | LSP diagnostics | Open `/tmp/teal-demo/main.tl` | 1 error + 1 warning |
-| LSP hover/completion | Hover `distance`; type `p.` | Signature; `x`, `y` |
+| LSP hover/completion | Hover `distance`; type `p.x` | Signature; `x`, `y` |
 | Missing server | Code review; clean environment if available | Actionable error |
 | No `tlconfig.lua` | Open `/tmp/teal-demo-noconfig` | Diagnostics still work |
 | Formatter docs | Read README | `ceru` config uses stdin/stdout |
