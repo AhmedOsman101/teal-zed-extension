@@ -15,6 +15,10 @@ end
 
 local type Pair<T> = { T, T }
 
+local macroexp double(x: number): number
+  return x * 2
+end
+
 local function distance(a: Point, b: Point): number
   local dx = a.x - b.x
   local dy = a.y - b.y
@@ -56,3 +60,4 @@ end
 local label: string = distance(p, q)
 local pair: Pair<number> = { 1, 2 }
 print(label, "red" as Color, pair[1])
+print(double(2))

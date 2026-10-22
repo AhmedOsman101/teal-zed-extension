@@ -21,3 +21,7 @@
 (macroexp_declaration
   "macroexp" @context
   name: (identifier) @name) @item
+
+(macroexp_statement
+  "macroexp" @context
+  name: (identifier) @name) @item
