@@ -1,0 +1,10 @@
+id = "teal"
+name = "Teal"
+description = "Teal language support."
+version = "0.1.0"
+schema_version = 1
+authors = ["Ahmad Othman <ahmad.ali.othman@outlook.com>"]
+
+[grammars.teal]
+repository = "https://github.com/euclidianAce/tree-sitter-teal"
+rev = "ac6b42ffb23d5d52b582c02508dd3524ac0ba3df"

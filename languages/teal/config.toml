@@ -1,0 +1,14 @@
+name = "Teal"
+grammar = "teal"
+path_suffixes = ["tl"]
+line_comments = ["-- ", "--- "]
+block_comment = ["--[", "]"]
+autoclose_before = ";:.,=}])>"
+brackets = [
+    { start = "{", end = "}", close = true, newline = true },
+    { start = "[", end = "]", close = true, newline = true },
+    { start = "(", end = ")", close = true, newline = true },
+    { start = "\"", end = "\"", close = true, newline = false, not_in = ["string"] },
+    { start = "'", end = "'", close = true, newline = false, not_in = ["string"] },
+]
+collapsed_placeholder = "--[ ... ]--"
