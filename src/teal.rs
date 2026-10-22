@@ -6,36 +6,57 @@ fn default_args(configured: Option<Vec<String>>) -> Vec<String> {
     configured.unwrap_or_else(|| vec!["-d".into(), "INFO".into()])
 }
 
-fn home_server_path(shell_env: &[(String, String)], os: Os) -> Option<String> {
-    let home = shell_env
+fn env_value<'a>(shell_env: &'a [(String, String)], name: &str) -> Option<&'a str> {
+    shell_env
         .iter()
-        .find(|(name, _)| name == "HOME")
-        .or_else(|| shell_env.iter().find(|(name, _)| name == "USERPROFILE"))
-        .map(|(_, value)| value.as_str())?;
-    let suffix = if matches!(os, Os::Windows) {
-        ".exe"
+        .find(|(key, _)| key == name)
+        .map(|(_, value)| value.as_str())
+}
+
+fn luarocks_fallback_paths(shell_env: &[(String, String)], os: Os) -> Vec<String> {
+    if matches!(os, Os::Windows) {
+        let mut paths = Vec::new();
+
+        if let Some(appdata) = env_value(shell_env, "APPDATA") {
+            paths.push(format!("{appdata}/luarocks/bin/teal-language-server.bat"));
+        }
+
+        if let Some(home) =
+            env_value(shell_env, "HOME").or_else(|| env_value(shell_env, "USERPROFILE"))
+        {
+            paths.push(format!("{home}/.luarocks/bin/teal-language-server.bat"));
+        }
+
+        paths
     } else {
-        ""
-    };
-    Some(format!("{home}/.luarocks/bin/teal-language-server{suffix}"))
+        env_value(shell_env, "HOME")
+            .or_else(|| env_value(shell_env, "USERPROFILE"))
+            .map(|home| vec![format!("{home}/.luarocks/bin/teal-language-server")])
+            .unwrap_or_default()
+    }
 }
 
 fn resolve_server(
     configured_path: Option<String>,
     configured_args: Option<Vec<String>>,
+    configured_env: Vec<(String, String)>,
     shell_env: &[(String, String)],
     os: Os,
     which: impl Fn(&str) -> Option<String>,
 ) -> Result<zed::Command> {
     let command = configured_path
         .or_else(|| which("teal-language-server"))
-        .or_else(|| home_server_path(shell_env, os).and_then(|path| which(&path)))
+        .or_else(|| {
+            luarocks_fallback_paths(shell_env, os)
+                .into_iter()
+                .find_map(|path| which(&path))
+        })
         .ok_or_else(missing_server_error)?;
 
     Ok(zed::Command {
         command,
         args: default_args(configured_args),
-        env: vec![],
+        env: configured_env,
     })
 }
 
@@ -58,16 +79,28 @@ impl zed::Extension for TealExtension {
         let binary = LspSettings::for_worktree(language_server_id.as_ref(), worktree)
             .ok()
             .and_then(|settings| settings.binary);
-        let (configured_path, configured_args) = match binary {
-            Some(binary) => (binary.path, binary.arguments),
-            None => (None, None),
+        let (configured_path, configured_args, configured_env) = match binary {
+            Some(binary) => (binary.path, binary.arguments, binary.env),
+            None => (None, None, None),
         };
+        let configured_env = configured_env
+            .map(|env| {
+                let mut env: Vec<_> = env.into_iter().collect();
+                env.sort();
+                env
+            })
+            .unwrap_or_default();
 
         let shell_env = worktree.shell_env();
         let (os, _) = zed::current_platform();
-        resolve_server(configured_path, configured_args, &shell_env, os, |name| {
-            worktree.which(name)
-        })
+        resolve_server(
+            configured_path,
+            configured_args,
+            configured_env,
+            &shell_env,
+            os,
+            |name| worktree.which(name),
+        )
     }
 }
 
@@ -92,38 +125,63 @@ mod tests {
     }
 
     #[test]
-    fn home_candidate_uses_home() {
+    fn luarocks_fallback_uses_home() {
         let env = vec![("HOME".into(), "/home/u".into())];
         assert_eq!(
-            home_server_path(&env, Os::Linux).as_deref(),
-            Some("/home/u/.luarocks/bin/teal-language-server")
+            luarocks_fallback_paths(&env, Os::Linux),
+            vec!["/home/u/.luarocks/bin/teal-language-server"]
         );
     }
 
     #[test]
-    fn home_candidate_falls_back_to_userprofile() {
+    fn luarocks_fallback_uses_userprofile_on_unix() {
         let env = vec![("USERPROFILE".into(), "C:\\Users\\u".into())];
         assert_eq!(
-            home_server_path(&env, Os::Windows).as_deref(),
-            Some("C:\\Users\\u/.luarocks/bin/teal-language-server.exe")
+            luarocks_fallback_paths(&env, Os::Linux),
+            vec!["C:\\Users\\u/.luarocks/bin/teal-language-server"]
         );
     }
 
     #[test]
-    fn home_candidate_prefers_home_over_userprofile() {
+    fn luarocks_fallback_prefers_home_over_userprofile() {
         let env = vec![
             ("USERPROFILE".into(), "C:\\Users\\u".into()),
             ("HOME".into(), "/home/u".into()),
         ];
         assert_eq!(
-            home_server_path(&env, Os::Linux).as_deref(),
-            Some("/home/u/.luarocks/bin/teal-language-server")
+            luarocks_fallback_paths(&env, Os::Linux),
+            vec!["/home/u/.luarocks/bin/teal-language-server"]
         );
     }
 
     #[test]
-    fn home_candidate_is_none_without_home_variables() {
-        assert_eq!(home_server_path(&[], Os::Linux), None);
+    fn windows_luarocks_fallback_uses_appdata_bat() {
+        let env = vec![("APPDATA".into(), "C:\\Users\\u\\AppData\\Roaming".into())];
+        assert_eq!(
+            luarocks_fallback_paths(&env, Os::Windows),
+            vec!["C:\\Users\\u\\AppData\\Roaming/luarocks/bin/teal-language-server.bat"]
+        );
+    }
+
+    #[test]
+    fn windows_luarocks_fallback_includes_home_bat_candidate() {
+        let env = vec![
+            ("APPDATA".into(), "C:\\Users\\u\\AppData\\Roaming".into()),
+            ("HOME".into(), "C:\\msys64\\home\\u".into()),
+        ];
+        assert_eq!(
+            luarocks_fallback_paths(&env, Os::Windows),
+            vec![
+                "C:\\Users\\u\\AppData\\Roaming/luarocks/bin/teal-language-server.bat",
+                "C:\\msys64\\home\\u/.luarocks/bin/teal-language-server.bat",
+            ]
+        );
+    }
+
+    #[test]
+    fn luarocks_fallback_is_empty_without_home_variables() {
+        assert!(luarocks_fallback_paths(&[], Os::Linux).is_empty());
+        assert!(luarocks_fallback_paths(&[], Os::Windows).is_empty());
     }
 
     #[test]
@@ -131,6 +189,7 @@ mod tests {
         let command = resolve_server(
             Some("/custom/teal-language-server".into()),
             None,
+            vec![],
             &[],
             Os::Linux,
             |_| panic!("configured path must not be resolved through which"),
@@ -143,8 +202,12 @@ mod tests {
 
     #[test]
     fn path_lookup_wins_before_the_luarocks_fallback() {
-        let command = resolve_server(None, None, &[], Os::Linux, |name| {
-            (name == "teal-language-server").then(|| "/usr/bin/teal-language-server".into())
+        let command = resolve_server(None, None, vec![], &[], Os::Linux, |name| {
+            if name == "teal-language-server" {
+                Some("/usr/bin/teal-language-server".into())
+            } else {
+                panic!("luarocks fallback must not be resolved when PATH wins")
+            }
         })
         .unwrap();
         assert_eq!(command.command, "/usr/bin/teal-language-server");
@@ -153,7 +216,7 @@ mod tests {
     #[test]
     fn luarocks_fallback_is_resolved_through_which() {
         let env = vec![("HOME".into(), "/home/u".into())];
-        let command = resolve_server(None, None, &env, Os::Linux, |name| {
+        let command = resolve_server(None, None, vec![], &env, Os::Linux, |name| {
             (name == "/home/u/.luarocks/bin/teal-language-server").then(|| name.into())
         })
         .unwrap();
@@ -164,8 +227,39 @@ mod tests {
     }
 
     #[test]
+    fn windows_luarocks_fallback_is_resolved_through_which() {
+        let env = vec![("APPDATA".into(), "C:\\Users\\u\\AppData\\Roaming".into())];
+        let command = resolve_server(None, None, vec![], &env, Os::Windows, |name| {
+            (name == "C:\\Users\\u\\AppData\\Roaming/luarocks/bin/teal-language-server.bat")
+                .then(|| name.into())
+        })
+        .unwrap();
+        assert_eq!(
+            command.command,
+            "C:\\Users\\u\\AppData\\Roaming/luarocks/bin/teal-language-server.bat"
+        );
+    }
+
+    #[test]
+    fn configured_environment_is_propagated() {
+        let command = resolve_server(
+            None,
+            None,
+            vec![("LUA_PATH".into(), "/custom/?.lua".into())],
+            &[],
+            Os::Linux,
+            |name| (name == "teal-language-server").then(|| "/usr/bin/teal-language-server".into()),
+        )
+        .unwrap();
+        assert_eq!(
+            command.env,
+            vec![("LUA_PATH".to_string(), "/custom/?.lua".to_string())]
+        );
+    }
+
+    #[test]
     fn missing_server_error_is_actionable() {
-        let error = resolve_server(None, None, &[], Os::Linux, |_| None).unwrap_err();
+        let error = resolve_server(None, None, vec![], &[], Os::Linux, |_| None).unwrap_err();
         assert!(error.contains("teal-language-server was not found"));
         assert!(error.contains("luarocks install teal-language-server"));
         assert!(error.contains("lsp.teal-language-server.binary.path"));
