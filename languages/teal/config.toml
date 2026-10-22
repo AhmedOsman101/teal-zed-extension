@@ -12,3 +12,5 @@ brackets = [
     { start = "'", end = "'", close = true, newline = false, not_in = ["string"] },
 ]
 collapsed_placeholder = "--[ ... ]--"
+increase_indent_pattern = "^\\s*(if|elseif|else|do|while|for|repeat|((local|global)\\s+)?function|.+=\\s*function|.*[,(]\\s*function|((local|global)\\s+)?(record|interface|enum|macroexp|type))\\b"
+decrease_indent_pattern = "^\\s*(elseif|else|end|until)\\b"

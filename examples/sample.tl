@@ -44,6 +44,14 @@ else
   print("near")
 end
 
+do
+  local settings = {
+    name = "demo",
+    values = { 1, 2, 3 },
+  }
+  print(settings.name)
+end
+
 -- Deliberate type error for diagnostics.
 local label: string = distance(p, q)
 local pair: Pair<number> = { 1, 2 }
