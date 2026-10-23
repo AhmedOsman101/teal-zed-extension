@@ -14,13 +14,21 @@ Deferred in the plan (Delivery decision, line 21): "Add a top-level `repository`
 before registry submission; no `zed-industries/extensions` PR in this plan." The URL no
 longer needs to be invented — the public repo exists.
 
-- [ ] Add `repository = "https://github.com/AhmedOsman101/teal-zed-extension"` to
-      `extension.toml` (top-level key, same convention as the grammar entry).
-- [ ] Confirm no `teal` extension id (and no competing Teal grammar) is already claimed
+- [x] Add `repository = "https://github.com/AhmedOsman101/teal-zed-extension"` to
+      `extension.toml` (top-level key, same convention as the grammar entry). Done in
+      `c38c4ea`.
+- [x] Confirm no `teal` extension id (and no competing Teal grammar) is already claimed
       in `zed-industries/extensions`.
 - [ ] Dev-install once more after the manifest change; manifest edits rebuild
       `extension.wasm`.
 - [ ] Open the registry PR against `zed-industries/extensions`, referencing this repo.
+      Prepared locally: branch `add-teal`, commit `6e2a77c` (`.gitmodules` +
+      `[teal]` entry between `tcl` and `tech49-theme`) in
+      `.tmp/opencode/extensions`. NOTE: zed-industries/extensions' AI policy
+      forbids agent-driven contributions and agent-written PR comments, so the push
+      and PR body must come from the repo maintainer in their own words.
+- [x] Display name updated to "Teal language support" (`1bff958`); extension id
+      stays `teal`.
 
 ## 2. Automatic `teal-language-server` installation
 
@@ -48,6 +56,18 @@ Fixes we shipped upstream: PR
 
 Not merged at recording time; server 0.2.1 lacks these behaviors (notably bare-word
 completion).
+
+Follow-up issues filed 2026-10-23:
+
+- [#91](https://github.com/teal-language/teal-language-server/issues/91) — completion
+  items carry no type information (no `detail`/`documentation`).
+- [#92](https://github.com/teal-language/teal-language-server/issues/92) — hovering a
+  `macroexp` errors with a nil index in `get_function_args_string`.
+- [#93](https://github.com/teal-language/teal-language-server/issues/93) — completion
+  after `.` returns nothing on parse-incomplete files (unclosed table constructor).
+- Type-name completion in type positions: already tracked as upstream
+  [#30](https://github.com/teal-language/teal-language-server/issues/30); concrete
+  repro and item-source analysis added there as a comment (no duplicate issue filed).
 
 Still missing upstream — candidates for follow-up issues:
 
