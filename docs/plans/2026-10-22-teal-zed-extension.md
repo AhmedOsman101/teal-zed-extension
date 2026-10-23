@@ -18,7 +18,7 @@ These are settled. Do not reopen them while implementing.
 2. **Grammar pin:** `https://github.com/euclidianAce/tree-sitter-teal` at `ac6b42ffb23d5d52b582c02508dd3524ac0ba3df` (ABI 15, 2026-08-13). It includes the function-statement-without-scope and generic-type fixes.
 3. **Indentation:** do not set `tab_size` in the language config. Zed falls back to the global `tab_size` setting (`display_map.rs:1375-1377`).
 4. **Queries:** `highlights.scm`, `brackets.scm`, `indents.scm`, `outline.scm`, `textobjects.scm`. No `folds.scm` (unsupported); folding comes from indents. No `injections.scm`, `runnables.scm`, or `overrides.scm` in v1.
-5. **Delivery:** local dev extension now; structure and metadata must be registry-ready, but no `zed-industries/extensions` PR in this plan.
+5. **Delivery:** local dev extension now; structure and metadata must be dev-install-ready. Add a top-level `repository` URL before registry submission; no `zed-industries/extensions` PR in this plan.
 6. **Extension ID:** `teal`. Language name: `Teal`. Grammar name: `teal`.
 7. **Server lookup:** Zed `LspSettings` binary path, arguments, and env → `worktree.which("teal-language-server")` → LuaRocks user tree (`~/.luarocks/bin` on Unix, `%APPDATA%\luarocks\bin` with a `.bat` wrapper on Windows) → error.
 8. **Server arguments:** `-d INFO` by default, so users can inspect server logs. **Never pass `-L`**; log-mode flags crash this server on shutdown (`attempt to use a closed file`, `log_file.lua:65`, exit 1).
@@ -482,7 +482,7 @@ Implementation decisions:
 - `language_server_id.as_ref()` is the string `"teal-language-server"`.
 - Read `LspSettings::for_worktree(...).ok()`; treat missing or invalid settings as empty, not as an error.
 - Resolution order: `settings.binary.path` → `worktree.which("teal-language-server")` → the LuaRocks user tree.
-- For the LuaRocks fallback, read `shell_env` from `worktree.shell_env()`. On Unix, use `HOME` then `USERPROFILE` and build `{home}/.luarocks/bin/teal-language-server`. On Windows, use `%APPDATA%\luarocks\bin\teal-language-server.bat` first, then `HOME`/`USERPROFILE` with `/.luarocks/bin/teal-language-server.bat` for MSYS-style installs. Do not use `std::env::var` (WASI exposes only `PWD` and `RUST_BACKTRACE`) and do not use `std::fs` (the sandbox does not preopen the home directory). Resolve each candidate with `worktree.which(&candidate)`.
+- For the LuaRocks fallback, read `shell_env` from `worktree.shell_env()`. On Unix, use `HOME` then `USERPROFILE` and build `{home}/.luarocks/bin/teal-language-server`. On Windows, use `%APPDATA%\luarocks\bin\teal-language-server.bat` first, then `HOME`/`USERPROFILE` with `/.luarocks/bin/teal-language-server.bat` for MSYS2-MinGW installs. Pure MSYS/Cygwin suffixless wrappers are covered by `PATH` or `binary.path`, not this fallback. Do not use `std::env::var` (WASI exposes only `PWD` and `RUST_BACKTRACE`) and do not use `std::fs` (the sandbox does not preopen the home directory). Resolve each candidate with `worktree.which(&candidate)`.
 - Arguments: if `settings.binary.arguments` is `Some`, use it verbatim. Otherwise use `["-d", "INFO"]`. Never add `-L`, `--log-mode`, or `--verbose`.
 - Environment: pass `settings.binary.env` through to `zed::Command.env`; default to an empty vector when unset.
 - If no path resolves, return this error string (use a raw string literal; it contains backticks):

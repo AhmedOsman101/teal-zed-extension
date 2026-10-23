@@ -33,6 +33,8 @@ The extension resolves the server in this order:
    - Linux and macOS: `~/.luarocks/bin/teal-language-server`.
    - Windows: `%APPDATA%\luarocks\bin\teal-language-server.bat`, then `~/.luarocks/bin/teal-language-server.bat`.
 
+The Windows fallback covers native LuaRocks and MSYS2-MinGW layouts. Pure MSYS/Cygwin LuaRocks installs a suffixless wrapper under `~/.luarocks/bin`; set `lsp.teal-language-server.binary.path` or put that directory on `PATH` for those installations.
+
 If none exists, Zed shows an error naming the binary, the install command, and the upstream repository.
 
 The default arguments are `-d INFO`. Do not add `-L` or `--log-mode`: version 0.2.1 crashes on shutdown with `attempt to use a closed file`.
@@ -87,7 +89,7 @@ Zed does not ship a Teal formatter in this extension. Use `ceru` as an external 
 - `languages/teal/textobjects.scm`
 - `examples/sample.tl` as a manual fixture.
 
-The language config deliberately does not set `tab_size`; Zed uses your global editor setting. Folding is derived from indentation because Zed has no `folds.scm`. Text objects select the inside of function, record, interface, and enum bodies without the closing `end`.
+The language config deliberately does not set `tab_size`; Zed uses your global editor setting. Folding is derived from indentation because Zed has no `folds.scm`. For non-empty bodies, text objects select the inside of function, record, interface, and enum bodies without the closing `end`; empty bodies fall back to the around range.
 
 ## Troubleshooting
 
