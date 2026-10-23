@@ -1,5 +1,6 @@
 target
 .tmp/external-context/*
-!.tmp/external-context/.gitkeep
+.tmp/opencode/*
+!.tmp/**/.gitkeep
 grammars/
 extension.wasm
