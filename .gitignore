@@ -4,3 +4,4 @@ target
 !.tmp/**/.gitkeep
 grammars/
 extension.wasm
+.zed/settings.json
